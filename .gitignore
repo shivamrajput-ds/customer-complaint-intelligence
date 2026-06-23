@@ -1,0 +1,117 @@
+# =========================
+# Virtual Environment
+# =========================
+.venv/
+venv/
+env/
+
+# =========================
+# Python Cache
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+
+# =========================
+# Environment Variables
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# Jupyter
+# =========================
+.ipynb_checkpoints/
+
+# =========================
+# IDE
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# OS Files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Build Files
+# =========================
+build/
+dist/
+*.egg-info/
+
+# =========================
+# Testing
+# =========================
+.pytest_cache/
+.coverage
+htmlcov/
+
+# =========================
+# MLflow
+# =========================
+mlruns/
+
+# =========================
+# DVC
+# =========================
+.dvc/cache/
+
+# =========================
+# Raw Dataset (Large Files)
+# =========================
+data/raw/
+
+# =========================
+# Temporary Files
+# =========================
+*.tmp
+*.bak
+*.swp
+
+# =========================
+# Cache
+# =========================
+.cache/
+.streamlit/cache/
+
+# =========================
+# Large Model Checkpoints
+# =========================
+*.ckpt
+*.h5
+*.pt
+*.pth
+
+# =========================
+# Local Databases
+# =========================
+*.db
+*.sqlite
+*.sqlite3
+
+# =========================
+# Optional Generated Outputs
+# Uncomment if required
+# =========================
+data/processed/complaints_processed.parquet
+data/processed/narratives_training.parquet
+# data/processed/dashboard/
+# data/processed/*.parquet
+
+# =========================
+# Optional NLP Models
+# Uncomment if required
+# =========================
+# models/nlp/*.pkl
+# models/nlp/*.joblib
