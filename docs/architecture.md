@@ -1,7 +1,5 @@
 # Architecture
 
-![System Architecture](assets/architecture/system_architecture.png)
-
 ## Overview
 
 The platform is split into three layers:

@@ -13,6 +13,14 @@ real organization or real users.
 
 ---
 
+## Links
+
+- **GitHub Repository:** [github.com/shivamrajput-ds/customer-complaint-intelligence](https://github.com/shivamrajput-ds/customer-complaint-intelligence)
+- **Demo Video:** [youtu.be/ZrXg5p7wbqM](https://youtu.be/ZrXg5p7wbqM)
+- **Docker Hub:** [hub.docker.com/repository/docker/shivamrajput130/customer-complaint-intelligence](https://hub.docker.com/repository/docker/shivamrajput130/customer-complaint-intelligence)
+
+---
+
 ## Quick Snapshot
 
 | | |
@@ -24,49 +32,7 @@ real organization or real users.
 | Unit tests | 14/14 passing |
 | Deployment | Dockerized, published to Docker Hub |
 
-Full metrics, how they were measured, and their limitations: [`evaluation.md`](evaluation.md).
-
----
-
-## Dashboard Preview
-
-![System Architecture](assets/architecture/system_architecture.png)
-
-![Project Workflow](assets/workflow/project_workflow.png)
-
-![Executive Dashboard](assets/screenshots/executive_dashboard.png)
-
-![Product Analysis](assets/screenshots/product_analysis.png)
-
-![Issue Analysis](assets/screenshots/issue_analysis.png)
-
-![Company Risk Score](assets/screenshots/company_risk_score.png)
-
-![Driver Analysis](assets/screenshots/driver_analysis.png)
-
-![Growth Analysis](assets/screenshots/growth_analysis.png)
-
-![Forecasting](assets/screenshots/forecasting.png)
-
-![Narrative Intelligence](assets/screenshots/narrative_intelligence.png)
-
-![NLP Intelligence](assets/screenshots/nlp_intelligence.png)
-
-![Recommendation Engine](assets/screenshots/recommendation.png)
-
-![Unit Test Results](assets/screenshots/testing.py.png)
-
-### Docker Deployment
-
-![Dockerized Dashboard](assets/docker/dockerized_dashboard.png)
-
-![Docker Build Success](assets/docker/docker_images.png)
-
-![Docker Container Running](assets/docker/docker_ps.png)
-
-![Docker Run Success](assets/docker/docker_run_success.png)
-
-![Docker Hub Repository](assets/docker/docker_hub_repo.png)
+Full metrics, how they were measured, and their limitations: [`evaluation.md`](docs/evaluation.md).
 
 ---
 
@@ -151,7 +117,7 @@ labels, forecast trend, complaint drivers) into:
 | Issue classifier accuracy | 62.39% |
 | Unit tests passing | 14/14 |
 
-See [`evaluation.md`](evaluation.md) for how these numbers were measured and
+See [`evaluation.md`](docs/evaluation.md) for how these numbers were measured and
 what their limitations are.
 
 ---
@@ -182,9 +148,9 @@ NLP training (`create_narrative_training_data.py`, `nlp_model_training.py`,
 `nlp_tuning.py`) runs as a **separate, occasional** process — not part of
 the main analytics pipeline — because retraining on millions of narratives
 is expensive and shouldn't happen on every dashboard refresh. See
-[`runbook.md`](runbook.md) for exact commands.
+[`runbook.md`](docs/runbook.md) for exact commands.
 
-Full diagram and module-by-module breakdown: [`architecture.md`](architecture.md).
+Full diagram and module-by-module breakdown: [`architecture.md`](docs/architecture.md).
 
 ---
 
@@ -280,7 +246,7 @@ python -m src.pipeline
 
 `pipeline.py` runs dashboard aggregation, risk scoring, driver analysis,
 growth analysis, forecasting, and the recommendation engine, in that order.
-It does **not** train or retrain NLP models — see [`runbook.md`](runbook.md)
+It does **not** train or retrain NLP models — see [`runbook.md`](docs/runbook.md)
 for that separate step.
 
 ### 4. Launch the Dashboard
@@ -310,7 +276,7 @@ docker pull shivamrajput130/customer-complaint-intelligence:latest
 docker run -p 8501:8501 shivamrajput130/customer-complaint-intelligence:latest
 ```
 
-Full Docker instructions: [`docker.md`](docker.md).
+Full Docker instructions: [`docker.md`](docs/docker.md).
 
 ---
 
@@ -321,7 +287,7 @@ parameters are controlled through `config.yaml` rather than being
 hardcoded. This means risk thresholds or forecast horizons can be tuned
 without touching pipeline code. Key settings (risk thresholds, growth
 labels, forecast parameters, NLP sample sizes) are referenced throughout
-this README and in [`adr.md`](adr.md) (ADR-006) — a dedicated
+this README and in [`adr.md`](docs/adr.md) (ADR-006) — a dedicated
 `config_reference.md` enumerating every key is on the documentation
 to-do list but doesn't exist yet.
 
@@ -361,7 +327,7 @@ to-do list but doesn't exist yet.
   from config, unlike every other pipeline module.
 
 The Known Limitations list above and the per-module weaknesses in
-[`evaluation.md`](evaluation.md) cover the known risks at this time. A
+[`evaluation.md`](docs/evaluation.md) cover the known risks at this time. A
 dedicated `risk_register.md` with formal impact/mitigation tracking is
 not maintained for this project — that level of process overhead isn't
 warranted for a project at this stage.
@@ -372,14 +338,14 @@ warranted for a project at this stage.
 
 | File | Contents |
 |---|---|
-| [`architecture.md`](architecture.md) | Full pipeline architecture, module dependency flow |
-| [`evaluation.md`](evaluation.md) | Model metrics, how they were measured, and their limitations |
-| [`case_study.md`](case_study.md) | Engineering challenges, tradeoffs, and rejected approaches |
-| [`docker.md`](docker.md) | Docker build, run, and deployment instructions |
-| [`data_dictionary.md`](data_dictionary.md) | Column-by-column description of the dataset |
-| [`runbook.md`](runbook.md) | Step-by-step operational commands |
-| [`benchmark.md`](benchmark.md) | Measured (and explicitly not-yet-measured) performance numbers |
-| [`adr.md`](adr.md) | Architecture Decision Records — key technical decisions and why |
+| [`architecture.md`](docs/architecture.md) | Full pipeline architecture, module dependency flow |
+| [`evaluation.md`](docs/evaluation.md) | Model metrics, how they were measured, and their limitations |
+| [`case_study.md`](docs/case_study.md) | Engineering challenges, tradeoffs, and rejected approaches |
+| [`docker.md`](docs/docker.md) | Docker build, run, and deployment instructions |
+| [`data_dictionary.md`](docs/data_dictionary.md) | Column-by-column description of the dataset |
+| [`runbook.md`](docs/runbook.md) | Step-by-step operational commands |
+| [`benchmark.md`](docs/benchmark.md) | Measured (and explicitly not-yet-measured) performance numbers |
+| [`adr.md`](docs/adr.md) | Architecture Decision Records — key technical decisions and why |
 | [`CHANGELOG.md`](CHANGELOG.md) | Version history |
 | [`LICENSE`](LICENSE) | MIT License |
 
