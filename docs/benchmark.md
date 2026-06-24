@@ -1,136 +1,385 @@
 # Benchmark
 
-This document tracks measured performance numbers for the platform.
-Where a number hasn't actually been measured yet, it's marked as such
-rather than estimated — the goal is for every figure here to be
-something you could re-verify by running the corresponding command.
+This document tracks measured performance numbers for the Customer Complaint Intelligence Platform.
+
+Where a number has not actually been measured yet, it is marked clearly as **Not Yet Measured** instead of being estimated. The goal is for every figure in this file to be reproducible by running the corresponding command.
 
 ---
 
-## Storage Optimization
+## 1. Benchmarking Philosophy
 
-| Stage | Size | Measured By |
-|---|---|---|
-| Raw CSV | 8-9 GB | File size on disk |
-| Processed Parquet (`complaints_processed.parquet`) | ~1.3 GB | File size on disk |
-| Reduction | ~85% | (1 − 1.3/9) |
+This project avoids fake performance claims.
 
----
+A benchmark is only reported as a measured result when:
 
-## Model Accuracy (from `evaluation.md`)
+* The command used to produce it is known
+* The result came from the actual project environment
+* The metric can be re-verified later
+* The value is not guessed or inferred from unrelated runs
 
-| Model | Metric | Value |
-|---|---|---|
-| Product classifier | Accuracy | 75.28% |
-| Issue classifier | Accuracy | 62.39% |
-| Forecast (Prophet) | Validation MAPE | 3.57% |
-| Forecast (Prophet) | Validation MAE | 17,748 complaints |
+For that reason, this file separates:
 
----
-
-## Dataset Scale
-
-| Metric | Value |
-|---|---|
-| Total complaints processed | 15.95M |
-| Narratives available for NLP | ~3.8M (23.84%) |
-| Narratives sampled for NLP training | up to 300,000 (configurable via `config.yaml`) |
-| Narratives sampled for hyperparameter tuning | up to 100,000 (configurable via `config.yaml`) |
+```text
+Measured Metrics
+Known Benchmark Gaps
+Ready-to-Run Measurement Commands
+```
 
 ---
 
-## Testing
+## 2. Environment Context
 
-| Metric | Value |
-|---|---|
-| Unit tests | 14/14 passing |
+| Property                | Value                                    |
+| ----------------------- | ---------------------------------------- |
+| Project                 | Customer Complaint Intelligence Platform |
+| Dataset                 | CFPB Consumer Complaint Database         |
+| Total complaints        | 15.95M                                   |
+| Raw data size           | 8–9 GB CSV                               |
+| Processed format        | Parquet                                  |
+| Runtime environment     | Local machine + Docker                   |
+| Python version          | 3.11                                     |
+| GPU required            | No                                       |
+| Final dashboard runtime | Streamlit                                |
+| Deployment              | Docker single-container image            |
 
 ---
 
-## Not Yet Measured
+## 3. Development Hardware
 
-The following are reasonable things to benchmark but have **not**
-actually been measured and timed yet. They're listed here explicitly so
-this file doesn't imply more rigor than currently exists:
+| Component            | Specification   |
+| -------------------- | --------------- |
+| Machine type         | Consumer laptop |
+| OS                   | Windows         |
+| RAM                  | 16 GB           |
+| GPU                  | NVIDIA GTX 1650 |
+| GPU used by pipeline | No              |
+| CPU-only compatible  | Yes             |
 
-- Preprocessing wall-clock time (raw CSV → processed Parquet) for the
-  full 15.95M-row dataset
-- `pipeline.py` end-to-end wall-clock time
-- NLP training time (`nlp_model_training.py` / `nlp_tuning.py`) on the
-  configured sample size
-- Streamlit dashboard cold-start time and per-tab render time
-- Single-prediction inference latency for `analyze_complaint()`
-  (product, issue, and topic prediction combined)
-- Docker image size and container cold-start time
-- Peak RAM usage during preprocessing and during NLP training
+The GPU is listed for hardware transparency. The core pipeline, NLP training, forecasting, and dashboard execution do not require GPU acceleration.
 
-### Ready-to-Run Measurement Snippets
+---
 
-Rather than guessing at these numbers, here's exactly how to produce
-real ones. Each snippet can be dropped into the relevant script's
-`if __name__ == "__main__":` block or run from a notebook.
+## 4. Storage Optimization
 
-**Pipeline / preprocessing wall-clock time:**
+| Stage                                              |    Size | Measured By           |
+| -------------------------------------------------- | ------: | --------------------- |
+| Raw CSV                                            |  8–9 GB | File size on disk     |
+| Processed Parquet (`complaints_processed.parquet`) | ~1.3 GB | File size on disk     |
+| Approximate storage reduction                      |    ~85% | `(1 - 1.3 / 9) * 100` |
+
+The storage reduction comes from converting the raw CSV into Parquet and using columnar storage. This makes downstream reads faster because modules can load only the columns they need.
+
+---
+
+## 5. Dataset Scale
+
+| Metric                              |         Value |
+| ----------------------------------- | ------------: |
+| Total complaints processed          |        15.95M |
+| Companies                           |         7.97K |
+| Products                            |            21 |
+| States / territories                |            64 |
+| Narrative availability              |        23.84% |
+| Narratives available for NLP        |         ~3.8M |
+| Narratives sampled for NLP training | Up to 300,000 |
+| Narratives sampled for tuning       | Up to 100,000 |
+
+---
+
+## 6. Model Performance
+
+| Model / Component  | Metric          |             Value |
+| ------------------ | --------------- | ----------------: |
+| Product classifier | Accuracy        |            75.28% |
+| Issue classifier   | Accuracy        |            62.39% |
+| Forecasting model  | Validation MAPE |             3.57% |
+| Forecasting model  | Validation MAE  | 17,748 complaints |
+
+Detailed methodology and limitations are documented in:
+
+```text
+docs/evaluation.md
+```
+
+---
+
+## 7. NLP Tuning Results
+
+| Classifier         | Best Parameters                                    | Accuracy |
+| ------------------ | -------------------------------------------------- | -------: |
+| Product classifier | `C=2.0`, `class_weight=None`, `max_features=20000` |   75.28% |
+| Issue classifier   | `C=2.0`, `class_weight=None`, `max_features=20000` |   62.39% |
+
+### Important Observation
+
+`class_weight="balanced"` was tested but performed worse than `class_weight=None`.
+
+This suggests that, for this dataset and validation split, adding synthetic class penalties hurt the model's ability to learn the dominant real-world complaint distribution.
+
+---
+
+## 8. Forecast Validation
+
+| Metric              |                  Value |
+| ------------------- | ---------------------: |
+| Forecast model      |                Prophet |
+| Granularity         |                Monthly |
+| Validation strategy | Last 6 months held out |
+| MAPE                |                  3.57% |
+| MAE                 |      17,748 complaints |
+
+The forecast metric is out-of-sample: the validation model is trained on earlier months and evaluated on the held-out final six months.
+
+---
+
+## 9. Testing Benchmark
+
+| Metric                  |          Value |
+| ----------------------- | -------------: |
+| Test framework          |         Pytest |
+| Unit tests              |  14/14 passing |
+| CI validation           | GitHub Actions |
+| Docker build validation | GitHub Actions |
+
+Command:
+
+```bash
+python -m pytest tests -v
+```
+
+Expected result:
+
+```text
+14 passed
+```
+
+---
+
+## 10. Docker Deployment Benchmark
+
+| Metric                       | Value                   |
+| ---------------------------- | ----------------------- |
+| Deployment type              | Single Docker container |
+| Runtime                      | Streamlit               |
+| Base image                   | Python 3.11 slim        |
+| Raw dataset included         | No                      |
+| Dashboard artifacts included | Yes                     |
+| NLP model artifacts included | Yes                     |
+| Docker image size            | Not Yet Measured        |
+| Container cold-start time    | Not Yet Measured        |
+
+The Docker image intentionally includes processed dashboard artifacts and trained NLP models to support one-command dashboard execution.
+
+This makes the image larger than a minimal Streamlit app image, but avoids requiring users to run preprocessing or model training before launching the dashboard.
+
+---
+
+## 11. Runtime Metrics
+
+| Metric                             | Status           |
+| ---------------------------------- | ---------------- |
+| Preprocessing wall-clock time      | Not Yet Measured |
+| Full analytics pipeline time       | Not Yet Measured |
+| Dashboard aggregation time         | Not Yet Measured |
+| Forecasting runtime                | Not Yet Measured |
+| NLP training runtime               | Not Yet Measured |
+| NLP tuning runtime                 | Not Yet Measured |
+| Streamlit cold-start time          | Not Yet Measured |
+| Single complaint inference latency | Not Yet Measured |
+| Peak RAM during preprocessing      | Not Yet Measured |
+| Peak RAM during NLP training       | Not Yet Measured |
+
+These are intentionally listed as gaps rather than filled with estimates.
+
+---
+
+## 12. Known Benchmark Gaps
+
+The following metrics should be measured in a future benchmark pass:
+
+* Preprocessing wall-clock time for the full 15.95M-row dataset
+* `pipeline.py` end-to-end wall-clock time
+* NLP training time on configured sample size
+* NLP tuning time on configured sample size
+* Streamlit dashboard cold-start time
+* Per-tab dashboard render time
+* Single-prediction inference latency
+* Docker image size
+* Docker container cold-start time
+* Peak RAM during preprocessing
+* Peak RAM during NLP training
+
+---
+
+## 13. Ready-to-Run Measurement Commands
+
+### 13.1 Preprocessing Runtime
+
+Add this wrapper around the preprocessing call:
 
 ```python
 import time
+from src.preprocessing import preprocess_data
 
 start = time.perf_counter()
-preprocess_data()  # or build_forecast(), run_pipeline(), etc.
+preprocess_data()
 elapsed = time.perf_counter() - start
-print(f"Elapsed: {elapsed:.2f} seconds")
+
+print(f"Preprocessing time: {elapsed:.2f} seconds")
 ```
 
-**Single-prediction inference latency:**
+---
+
+### 13.2 Full Pipeline Runtime
+
+```python
+import time
+from src.pipeline import run_pipeline
+
+start = time.perf_counter()
+run_pipeline()
+elapsed = time.perf_counter() - start
+
+print(f"Pipeline time: {elapsed:.2f} seconds")
+```
+
+---
+
+### 13.3 NLP Inference Latency
 
 ```python
 import time
 from src.nlp_predictor import analyze_complaint
 
-sample_text = "Someone opened fraudulent accounts in my name..."
+sample_text = """
+Someone opened multiple credit card accounts in my name without my permission.
+I found several hard inquiries on my credit report and fraudulent accounts
+that do not belong to me.
+"""
 
 start = time.perf_counter()
 result = analyze_complaint(sample_text)
 elapsed_ms = (time.perf_counter() - start) * 1000
-print(f"Inference latency: {elapsed_ms:.1f} ms")
+
+print(result)
+print(f"Inference latency: {elapsed_ms:.2f} ms")
 ```
 
-For a more representative number, wrap this in a loop over 50-100
-sample texts and report the mean and p95, since a single call includes
-one-time costs (e.g. first-call overhead) that a single measurement
-would overstate.
+For a more reliable estimate, run the prediction over 50–100 sample narratives and report:
 
-**Peak RAM usage (requires `pip install memory-profiler`):**
-
-```bash
-python -m memory_profiler src/preprocessing.py
+```text
+mean latency
+p50 latency
+p95 latency
 ```
 
-Or, for a running process, watch RSS directly:
+---
 
-```bash
-# while the pipeline is running, in a separate terminal:
-ps -o pid,rss,command -p <pid>
-```
-
-**Docker image size:**
+### 13.4 Docker Image Size
 
 ```bash
 docker images customer-complaint-intelligence:v1
 ```
 
-**Container cold-start time:**
+---
+
+### 13.5 Docker Container Cold Start
 
 ```bash
-time docker run --rm -d -p 8501:8501 customer-complaint-intelligence:v1
-# then poll http://localhost:8501 until it responds, and note the gap
+docker run --rm -d -p 8501:8501 customer-complaint-intelligence:v1
 ```
 
-Once these are run, this file should be updated to move each metric
-from "Not Yet Measured" into a proper results table above, with the
-exact command used noted alongside the number — the same pattern
-already used for Storage Optimization and Model Accuracy below.
+Then poll:
 
-This section is intentionally left as a how-to rather than filled with
-placeholder numbers, since a fabricated benchmark is worse than an
-acknowledged gap.
+```text
+http://localhost:8501
+```
+
+until the dashboard responds.
+
+Record the elapsed time manually or with a small script.
+
+---
+
+### 13.6 Peak RAM Usage
+
+Install:
+
+```bash
+pip install memory-profiler
+```
+
+Run:
+
+```bash
+python -m memory_profiler src/preprocessing.py
+```
+
+Alternative for a running process:
+
+```bash
+ps -o pid,rss,command -p <pid>
+```
+
+On Windows, use Task Manager or Resource Monitor while the pipeline is running.
+
+---
+
+### 13.7 Streamlit Cold Start
+
+```bash
+streamlit run app/streamlit_app.py
+```
+
+Start timing when the command is executed and stop when the browser successfully loads:
+
+```text
+http://localhost:8501
+```
+
+---
+
+## 14. How to Update This Benchmark File
+
+When a benchmark is measured:
+
+1. Record the command used
+2. Record the environment
+3. Record the metric value
+4. Move it from **Runtime Metrics** or **Known Benchmark Gaps** into a measured table
+5. Avoid rounding too aggressively
+6. Do not report one-off timings as universal performance guarantees
+
+Example:
+
+```text
+Metric: Full analytics pipeline runtime
+Command: python -m src.pipeline
+Machine: Windows laptop, 16 GB RAM
+Result: 00:14:32
+Date measured: 2026-06-24
+```
+
+---
+
+## 15. Summary
+
+Measured strengths:
+
+* 15.95M complaint rows processed
+* 8–9 GB raw CSV compressed to ~1.3 GB Parquet
+* ~85% storage reduction
+* 75.28% Product classifier accuracy
+* 62.39% Issue classifier accuracy
+* 3.57% forecast validation MAPE
+* 14/14 unit tests passing
+* Dockerized deployment with CI validation
+
+Known benchmark gaps:
+
+* Runtime metrics are not yet fully measured
+* Peak RAM usage is not yet measured
+* Docker cold-start timing is not yet measured
+* Streamlit per-tab render timing is not yet measured
+
+This benchmark file is intentionally conservative: it reports measured results where available and clearly labels unmeasured areas instead of inventing numbers.

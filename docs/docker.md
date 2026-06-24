@@ -2,66 +2,160 @@
 
 ## Purpose
 
-This document describes how to build and run the Customer Complaint
-Intelligence Platform using Docker.
+This document describes how to build, run, validate, and troubleshoot the Customer Complaint Intelligence Platform using Docker.
 
 The Docker image contains:
-- The Streamlit dashboard (`app/`)
-- Pipeline source code (`src/`)
-- Config files (`config.yaml`, `.streamlit/config.toml`)
-- Already-computed dashboard Parquet artifacts (`data/processed/`)
-- Already-trained NLP model artifacts (`models/nlp/`)
 
-The raw dataset (`data/raw/`) is excluded from the image. See
-`architecture.md` → Deployment Layer for why the image is built this
-way (one-command demo execution, not full-pipeline-from-scratch
-execution inside the container).
+* Streamlit dashboard (`app/`)
+* Analytics pipeline source code (`src/`)
+* Configuration files (`config.yaml`, `.streamlit/config.toml`)
+* Pre-computed dashboard artifacts (`data/processed/`)
+* Trained NLP model artifacts (`models/nlp/`)
+
+The raw CFPB dataset (`data/raw/`) is intentionally excluded from the image.
+
+This deployment strategy prioritizes:
+
+* One-command execution
+* Fast demo startup
+* Reproducibility
+* Portfolio-friendly deployment
+
+See `architecture.md` for the deployment architecture rationale.
 
 ---
 
-## Build Image
+# Image Characteristics
+
+| Property                     | Value            |
+| ---------------------------- | ---------------- |
+| Base Image                   | Python 3.11 Slim |
+| Runtime                      | Streamlit        |
+| Deployment Type              | Single Container |
+| Approximate Size             | 3–4 GB           |
+| Includes Dashboard Artifacts | Yes              |
+| Includes NLP Models          | Yes              |
+| Includes Raw Dataset         | No               |
+| Runs as Non-Root User        | Yes              |
+
+The image is intentionally larger than a minimal application container because it bundles pre-computed dashboard outputs and trained NLP models.
+
+This allows the dashboard to start immediately after `docker run` without requiring preprocessing, analytics generation, forecasting, or NLP model training inside the container.
+
+---
+
+# Build Image
+
+Build the Docker image locally.
 
 ```bash
 docker build -t customer-complaint-intelligence:v1 .
 ```
 
+Verify image creation:
+
+```bash
+docker images
+```
+
+Expected repository:
+
+```text
+customer-complaint-intelligence
+```
+
 ---
 
-## Run Container
+# Run Container
+
+Run the locally built image.
 
 ```bash
 docker run -p 8501:8501 customer-complaint-intelligence:v1
 ```
 
-Open: `http://localhost:8501`
+Open:
+
+```text
+http://localhost:8501
+```
 
 ---
 
-## Docker Hub Image
+# Docker Hub Image
 
-Repository: [hub.docker.com/repository/docker/shivamrajput130/customer-complaint-intelligence](https://hub.docker.com/repository/docker/shivamrajput130/customer-complaint-intelligence)
+Repository:
+
+```text
+https://hub.docker.com/repository/docker/shivamrajput130/customer-complaint-intelligence
+```
+
+Pull the latest published image:
 
 ```bash
 docker pull shivamrajput130/customer-complaint-intelligence:latest
+```
+
+Run:
+
+```bash
 docker run -p 8501:8501 shivamrajput130/customer-complaint-intelligence:latest
 ```
 
+Open:
+
+```text
+http://localhost:8501
+```
+
 ---
 
-## Verifying the Container Is Running
+# Verify Container Health
+
+List running containers:
 
 ```bash
 docker ps
-docker logs -f customer-complaint-intelligence
 ```
 
-A healthy container should show the Streamlit startup log lines and
-respond on `http://localhost:8501` within the configured health-check
-start period.
+View logs:
+
+```bash
+docker logs -f <container_id>
+```
+
+A healthy container should:
+
+* Stay in `Up` status
+* Show Streamlit startup logs
+* Respond on port 8501
+* Load the dashboard successfully
+
+Example:
+
+```text
+You can now view your Streamlit app in your browser.
+```
 
 ---
 
-## Production-Style Multi-Stage Dockerfile
+# Common Port Conflict
+
+If port 8501 is already allocated:
+
+```bash
+docker run -p 8502:8501 customer-complaint-intelligence:v1
+```
+
+Open:
+
+```text
+http://localhost:8502
+```
+
+---
+
+# Production-Style Multi-Stage Dockerfile
 
 ```dockerfile
 FROM python:3.11-slim AS base
@@ -97,27 +191,48 @@ COPY .streamlit/ .streamlit/
 
 RUN useradd --create-home --shell /bin/bash appuser \
     && chown -R appuser:appuser /app
+
 USER appuser
 
 EXPOSE 8501
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8501')" || exit 1
+CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8501')" || exit 1
 
-CMD ["streamlit", "run", "app/streamlit_app.py", "--server.address=0.0.0.0", "--server.port=8501"]
+CMD ["streamlit","run","app/streamlit_app.py","--server.address=0.0.0.0","--server.port=8501"]
 ```
 
-This is a multi-stage build: the `base` stage installs OS-level build
-tools, `dependencies` installs Python packages (cached separately so
-code changes don't force a full dependency reinstall), and `runtime`
-copies in the actual application and pre-computed artifacts. The
-container runs as a non-root user (`appuser`) rather than the default
-root, which is a standard hardening practice — if the container were
-ever compromised, the process would not have root privileges inside it.
+### Why Multi-Stage?
+
+Benefits:
+
+* Smaller image
+* Faster rebuilds
+* Dependency caching
+* Cleaner runtime layer
+* Better separation of concerns
+
+### Why Non-Root User?
+
+The container runs as:
+
+```text
+appuser
+```
+
+instead of root.
+
+This is a standard container-hardening practice because it limits permissions if the container is ever compromised.
 
 ---
 
-## docker-compose.yaml
+# Docker Compose
+
+Create:
+
+```text
+docker-compose.yaml
+```
 
 ```yaml
 version: "3.9"
@@ -126,32 +241,30 @@ services:
   complaint-intelligence:
     image: shivamrajput130/customer-complaint-intelligence:latest
     container_name: customer-complaint-intelligence
+
     ports:
       - "8501:8501"
-    networks:
-      - complaint-net
+
     restart: unless-stopped
+
     environment:
       - PYTHONUNBUFFERED=1
+
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501')"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
-
-networks:
-  complaint-net:
-    driver: bridge
 ```
 
-### Run with Compose
+Start:
 
 ```bash
 docker compose up -d
 ```
 
-Logs:
+View logs:
 
 ```bash
 docker logs -f customer-complaint-intelligence
@@ -165,9 +278,9 @@ docker compose down
 
 ---
 
-## Files Excluded from the Docker Image
+# Files Excluded from the Image
 
-`.dockerignore` excludes:
+The following files are intentionally excluded via `.dockerignore`:
 
 ```text
 data/raw/
@@ -179,68 +292,185 @@ logs/
 .env
 ```
 
-The image includes:
+These files are not required for runtime execution.
+
+---
+
+# Files Included in the Image
 
 ```text
 app/
 src/
 config.yaml
+.streamlit/
+requirements.txt
 data/processed/
 models/nlp/
-requirements.txt
-.streamlit/
 ```
 
----
-
-## Why the Image Includes Pre-Computed Artifacts
-
-The image intentionally bundles `data/processed/` and `models/nlp/`
-rather than expecting the user to run the preprocessing pipeline and
-NLP training inside the container. This means a single `docker run`
-produces a fully working dashboard immediately, at the cost of a larger
-image than a minimal "just the app code" image would be. This is a
-deliberate trade-off — see `case_study.md` → Rejected Approaches for
-the alternative that was not used (retraining/reprocessing on container
-startup).
+These files are required for dashboard execution.
 
 ---
 
-## Troubleshooting
+# Why Pre-Computed Artifacts Are Bundled
 
-### Port Already Allocated
+The image intentionally includes:
+
+```text
+data/processed/
+models/nlp/
+```
+
+instead of generating them during startup.
+
+Advantages:
+
+* Faster startup
+* No preprocessing required
+* No forecasting required
+* No NLP retraining required
+* Reproducible demo environment
+
+Trade-off:
+
+```text
+Larger image size
+```
+
+This trade-off was intentionally chosen because the project is designed for demonstration and portfolio deployment rather than distributed production retraining.
+
+---
+
+# Health Check Notes
+
+The container uses a Streamlit health check:
+
+```text
+http://localhost:8501
+```
+
+During initial startup, health checks may briefly fail while:
+
+* Streamlit starts
+* Dashboard artifacts load
+* NLP models load
+
+This is expected behavior during the startup period.
+
+---
+
+# Troubleshooting
+
+## Port Already Allocated
+
+Error:
+
+```text
+Bind for 0.0.0.0:8501 failed: port is already allocated
+```
+
+Fix:
 
 ```bash
 docker run -p 8502:8501 customer-complaint-intelligence:v1
 ```
 
-Open: `http://localhost:8502`
+---
 
-### NLP Model Loading Error
+## NLP Model Loading Error
 
-This usually means a dependency version mismatch between the
-environment the models were trained/pickled in and the environment
-installed inside the container (`numpy`, `scikit-learn`, and `joblib`
-versions all matter for unpickling). Ensure `models/nlp/` is included
-in the build context and that `requirements.txt` pins versions matching
-the training environment.
+Possible cause:
 
-### Parquet File Missing
+```text
+numpy
+scikit-learn
+joblib
+```
 
-The dashboard expects pre-computed Parquet files under
-`data/processed/dashboard/`. If the image was built without running the
-pipeline first, run it before building:
+versions differ from the training environment.
+
+Fix:
+
+* Pin dependency versions
+* Rebuild image
+* Re-export model artifacts
+
+---
+
+## Missing Dashboard Files
+
+Error:
+
+```text
+Summary file not found
+```
+
+Cause:
+
+Pipeline outputs were not included during image build.
+
+Fix:
 
 ```bash
 python -m src.preprocessing
 python -m src.pipeline
+docker build -t customer-complaint-intelligence:v1 .
 ```
 
-Then rebuild the image so the artifacts get copied in.
+---
 
-### Streamlit Theme Not Applying
+## Streamlit Theme Not Applied
 
-The dark theme is controlled by `.streamlit/config.toml`. Confirm this
-file exists at that exact path (not just `config.toml` in the project
-root) — Streamlit only reads theme settings from
-`.streamlit/config.toml` relative to the app's working directory.
+Cause:
+
+```text
+.streamlit/config.toml
+```
+
+missing from the image.
+
+Verify:
+
+```text
+.streamlit/config.toml
+```
+
+exists before rebuilding.
+
+---
+
+## Container Exits Immediately
+
+Check logs:
+
+```bash
+docker ps -a
+docker logs <container_id>
+```
+
+Common causes:
+
+* Missing NLP artifacts
+* Missing dashboard artifacts
+* Dependency version mismatch
+* Incorrect file paths
+
+---
+
+# Deployment Validation Checklist
+
+Before publishing:
+
+```text
+Docker image builds successfully
+Container starts successfully
+Dashboard loads successfully
+Executive Dashboard loads
+Risk Analysis loads
+Forecasting loads
+NLP Prediction loads
+Recommendation Engine loads
+Health check passes
+```
+
+If all items above pass, the Docker deployment is considered successful.

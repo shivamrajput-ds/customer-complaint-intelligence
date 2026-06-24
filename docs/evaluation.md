@@ -6,6 +6,17 @@ is to let a reader judge the numbers rather than just trust them.
 
 ---
 
+## Dataset & Storage Context
+
+| | |
+|---|---|
+| Raw Dataset Size | 8–9 GB CSV |
+| Processed Dataset Size | ~1.3 GB Parquet |
+| Storage Reduction | ~85% |
+| Total Complaints | 15.95M |
+
+The analytics pipeline uses Parquet storage and pre-aggregated dashboard outputs to reduce memory usage and improve dashboard responsiveness.
+
 ## NLP Classifiers
 
 ### Product Classifier
@@ -138,6 +149,20 @@ functions in isolation rather than running an end-to-end integration
 test against real data — there is currently no test that runs the full
 pipeline against a small fixture dataset and checks the final dashboard
 outputs.
+
+---
+
+## Metric Scope
+
+All NLP metrics reported in this document are offline evaluation metrics measured on a held-out test split.
+
+These metrics do not represent:
+- Real-world production monitoring
+- Live user feedback
+- Model drift performance
+- Future complaint distributions
+
+As a result, actual performance may vary when the model is exposed to complaint patterns that differ from the training data.
 
 ---
 

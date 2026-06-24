@@ -1,287 +1,596 @@
 # Architecture
 
-## Overview
-
-The platform is split into three layers:
-
-1. **Pipeline layer** (`src/`) — batch jobs that read raw or processed data
-   and write small, pre-aggregated Parquet outputs.
-2. **Presentation layer** (`app/streamlit_app.py`) — reads only the
-   pre-aggregated outputs, never the raw or fully processed dataset.
-3. **Deployment layer** (Docker) — packages the presentation layer plus
-   already-computed artifacts (processed dashboard data, trained NLP
-   models) for one-command startup.
-
-This separation exists specifically so the dashboard stays fast and
-memory-light regardless of how large the underlying dataset is — the
-expensive work happens once, offline, in the pipeline layer.
+This document explains the architecture of the Customer Complaint Intelligence Platform: how raw CFPB complaint data moves through preprocessing, analytics, NLP, recommendation generation, dashboard serving, testing, and Docker deployment.
 
 ---
 
-## End-to-End Flow
+## 1. Overview
 
+The platform is designed as a production-style, single-machine analytics system.
+
+It is split into three major layers:
+
+1. **Pipeline Layer** (`src/`)
+   Batch jobs that read raw or processed data and write small, pre-aggregated Parquet outputs.
+
+2. **Presentation Layer** (`app/streamlit_app.py`)
+   Streamlit dashboard that reads only pre-computed summary files, never the raw CSV or full processed dataset.
+
+3. **Deployment Layer** (`Docker`)
+   Packages the dashboard, source code, processed dashboard artifacts, and trained NLP models for one-command execution.
+
+This separation keeps the dashboard fast and memory-light even though the source dataset contains **15.95M complaints** and starts as an **8-9 GB CSV**.
+
+---
+
+## 2. Technology Stack
+
+| Layer            | Technology                           |
+| ---------------- | ------------------------------------ |
+| Language         | Python 3.11                          |
+| Data Processing  | Pandas, PyArrow                      |
+| Storage          | Parquet                              |
+| Dashboard        | Streamlit                            |
+| Visualization    | Plotly                               |
+| NLP Features     | TF-IDF                               |
+| NLP Models       | Logistic Regression, LDA             |
+| Forecasting      | Prophet                              |
+| Testing          | Pytest                               |
+| CI/CD            | GitHub Actions                       |
+| Containerization | Docker                               |
+| Configuration    | YAML (`config.yaml`)                 |
+| Logging          | Python logging + RotatingFileHandler |
+
+---
+
+## 3. Repository Structure
+
+```text
+customer-complaint-intelligence/
+├── app/
+│   └── streamlit_app.py
+├── src/
+│   ├── config_loader.py
+│   ├── logger.py
+│   ├── exception.py
+│   ├── preprocessing.py
+│   ├── dashboard_data.py
+│   ├── risk_analysis.py
+│   ├── driver_analysis.py
+│   ├── growth_analysis.py
+│   ├── forecasting.py
+│   ├── recommendation_engine.py
+│   ├── create_narrative_training_data.py
+│   ├── nlp_model_training.py
+│   ├── nlp_tuning.py
+│   ├── nlp_predictor.py
+│   └── pipeline.py
+├── data/
+│   ├── raw/
+│   └── processed/
+│       └── dashboard/
+├── models/
+│   └── nlp/
+├── tests/
+├── docs/
+├── assets/
+├── .github/
+│   └── workflows/
+├── .streamlit/
+│   └── config.toml
+├── config.yaml
+├── Dockerfile
+├── requirements.txt
+├── pyproject.toml
+├── CHANGELOG.md
+└── LICENSE
 ```
-data/raw/complaints.csv  (8-9 GB, 15.95M rows)
+
+---
+
+## 4. End-to-End Flow
+
+```text
+data/raw/complaints.csv
+8-9 GB CSV / 15.95M rows
         │
         ▼
 src/preprocessing.py
-  - chunked CSV read (configurable chunksize)
-  - column validation
+  - chunked CSV reading
+  - required-column validation
   - missing-value handling
-  - date parsing + feature engineering (Year/Month/Quarter/Day/Day_Name)
-  - duplicate removal (by Complaint ID)
+  - date parsing
+  - feature engineering
+  - duplicate removal
         │
         ▼
-data/processed/complaints_processed.parquet  (~1.3 GB)
+data/processed/complaints_processed.parquet
+~1.3 GB Parquet
         │
-        ├──────────────► src/dashboard_data.py ──► data/processed/dashboard/*.parquet
-        │                  (KPIs, product/issue/company breakdowns,
-        │                   narrative stats, geography — Module 1)
+        ├──────────────► src/dashboard_data.py
+        │                  └── data/processed/dashboard/*.parquet
         │
-        ├──────────────► src/risk_analysis.py ──► company_risk_score.parquet
-        │                  (Module 2: Risk Intelligence)
+        ├──────────────► src/risk_analysis.py
+        │                  └── company_risk_score.parquet
         │
-        ├──────────────► src/driver_analysis.py ──► driver_analysis.parquet,
-        │                  (Module 2: Driver Analysis)   top_complaint_drivers.parquet,
-        │                                               product_driver_summary.parquet
+        ├──────────────► src/driver_analysis.py
+        │                  ├── driver_analysis.parquet
+        │                  ├── top_complaint_drivers.parquet
+        │                  └── product_driver_summary.parquet
         │
-        └──────────────► src/growth_analysis.py ──► product_growth.parquet,
-                           (Module 2: Growth Analysis)   issue_growth.parquet,
-                                                          monthly_complaint_trend.parquet
+        └──────────────► src/growth_analysis.py
+                           ├── product_growth.parquet
+                           ├── issue_growth.parquet
+                           └── monthly_complaint_trend.parquet
                                     │
                                     ▼
-                           src/forecasting.py ──► complaint_forecast.parquet,
-                           (Module 2: Forecasting)   forecast_summary.parquet
+                           src/forecasting.py
+                           ├── complaint_forecast.parquet
+                           └── forecast_summary.parquet
                                     │
                                     ▼
-                       src/recommendation_engine.py ──► recommendations.parquet,
-                       (Module 4)                        executive_action_plan.parquet
+                           src/recommendation_engine.py
+                           ├── recommendations.parquet
+                           └── executive_action_plan.parquet
                                     │
                                     ▼
-                         app/streamlit_app.py
-                         (reads only data/processed/dashboard/*.parquet)
+                           app/streamlit_app.py
+```
 
+---
 
-  ── Separate, occasional process (not part of the above pipeline) ──
+## 5. NLP Flow
 
+NLP training is intentionally separated from the main analytics pipeline.
+
+```text
 data/processed/complaints_processed.parquet
         │
         ▼
-src/create_narrative_training_data.py ──► narratives_training.parquet
+src/create_narrative_training_data.py
         │
         ▼
-src/nlp_tuning.py  (small hyperparameter grid search)
-        │            or
-src/nlp_model_training.py  (fixed-hyperparameter training)
+data/processed/narratives_training.parquet
+        │
+        ├──► src.nlp_model_training.py
+        │       ├── Product classifier
+        │       ├── Issue classifier
+        │       └── LDA topic model
+        │
+        └──► src.nlp_tuning.py
+                ├── Tuned Product classifier
+                └── Tuned Issue classifier
         │
         ▼
-models/nlp/*.pkl  (product/issue classifiers, LDA topic model)
+models/nlp/*.pkl
         │
         ▼
-src/nlp_predictor.py  (loaded by the Streamlit app for live predictions)
+src/nlp_predictor.py
+        │
+        ▼
+Streamlit NLP Intelligence Tab
 ```
+
+### Why NLP is Separate
+
+`pipeline.py` does not call:
+
+```text
+create_narrative_training_data.py
+nlp_model_training.py
+nlp_tuning.py
+```
+
+because NLP training is slower and does not need to run on every analytics refresh.
+
+Analytics outputs may refresh frequently, but trained NLP models change only when retraining is intentionally performed.
+
+### Operational Note
+
+`nlp_model_training.py` and `nlp_tuning.py` both write to overlapping model filenames such as:
+
+```text
+product_classifier_model.pkl
+issue_classifier_model.pkl
+```
+
+Whichever script runs last becomes the source of truth loaded by `nlp_predictor.py`.
 
 ---
 
-## Module Dependency Order
+## 6. Module Dependency Order
 
-`src/pipeline.py` runs the analytics modules in a fixed sequence, but
-that sequence is not a real dependency chain end-to-end — only some
-stages actually depend on another stage's output. Collapsing this into
-a single top-to-bottom arrow would overstate how coupled the modules
-are, so the independent and dependent jobs are shown separately below.
+`src/pipeline.py` runs analytics modules in a fixed sequence:
 
-**Independent jobs** (each reads `complaints_processed.parquet`
-directly and could run in any order relative to each other):
-
-```
-config_loader
-     │
-     ├──► dashboard_data
-     ├──► risk_analysis
-     ├──► driver_analysis
-     └──► growth_analysis
+```text
+dashboard_data
+      ↓
+risk_analysis
+      ↓
+driver_analysis
+      ↓
+growth_analysis
+      ↓
+forecasting
+      ↓
+recommendation_engine
 ```
 
-**Dependent jobs** (each requires a specific upstream output to exist
-first):
+However, not every stage depends on the previous stage.
 
+### Independent Jobs
+
+Each of these reads `complaints_processed.parquet` directly:
+
+```text
+dashboard_data
+risk_analysis
+driver_analysis
+growth_analysis
 ```
-growth_analysis ──► monthly_complaint_trend.parquet ──► forecasting
 
+These modules could run in any relative order.
+
+### Dependent Jobs
+
+```text
+growth_analysis
+      ↓
+monthly_complaint_trend.parquet
+      ↓
+forecasting
+```
+
+```text
 risk_analysis ─────┐
-growth_analysis ────┼──► recommendation_engine
-forecasting ────────┤    (needs Risk, Growth, Forecast, AND Driver
-driver_analysis ────┘     outputs all present)
+growth_analysis ───┼──► recommendation_engine
+forecasting ───────┤
+driver_analysis ───┘
 ```
 
-`pipeline.py` happens to call all of these in one fixed order
-(`dashboard_data → risk_analysis → driver_analysis → growth_analysis →
-forecasting → recommendation_engine`) for simplicity, but only the
-`forecasting` and `recommendation_engine` orderings are load-bearing —
-the first four could run in any relative order without breaking
-anything.
-
-`forecasting.py` and `recommendation_engine.py` both check for their
-required input files at the start and raise a clear `FileNotFoundError` if
-an upstream stage hasn't run yet, rather than failing with an obscure
-`pandas` error mid-computation.
+`forecasting.py` and `recommendation_engine.py` validate required input files at startup and fail clearly if upstream outputs are missing.
 
 ---
 
-## Why `pipeline.py` Excludes NLP Training
+## 7. Pipeline Layer
 
-`pipeline.py` intentionally does not call
-`create_narrative_training_data.py`, `nlp_model_training.py`, or
-`nlp_tuning.py`. NLP training runs over up to 300K sampled narratives
-(configurable) and takes meaningfully longer than the rest of the
-pipeline combined. Running it on every dashboard data refresh would be
-wasteful — the trained models change rarely, while the dashboard's
-analytics (risk scores, growth, forecasts) should refresh whenever new
-complaint data arrives.
+The pipeline layer contains batch jobs under `src/`.
 
-In practice this means: run `pipeline.py` regularly (e.g. whenever new
-raw data lands), and run the NLP training scripts only when you actually
-want to retrain the classifiers — see [`runbook.md`](runbook.md).
+Responsibilities:
 
-**Operational note:** `nlp_model_training.py` and `nlp_tuning.py` both
-write to the same output filenames in `models/nlp/`
-(`product_classifier_model.pkl`, `issue_classifier_model.pkl`, etc.). Only
-run one of them per training cycle — whichever runs last overwrites the
-other's output. `nlp_tuning.py` is the more complete version (it searches
-a small hyperparameter grid and keeps the best result); `nlp_model_training.py`
-trains with fixed hyperparameters and additionally produces the LDA topic
-model, which `nlp_tuning.py` does not.
+* Read raw or processed data
+* Validate inputs
+* Transform data
+* Generate Parquet outputs
+* Log stage-level progress
+* Raise clear errors through custom exceptions
+
+The pipeline layer is intentionally separated from the Streamlit app so that expensive computation happens offline, not during dashboard interaction.
 
 ---
 
-## Presentation Layer
+## 8. Presentation Layer
 
-`app/streamlit_app.py` never reads `complaints_processed.parquet` or the
-raw CSV directly. Every tab in the dashboard is backed by a small,
-pre-aggregated Parquet file under `data/processed/dashboard/`, loaded via
-a cached `load_summary()` function. This is what keeps dashboard load
-times independent of the underlying 15.95M-row dataset size.
+The dashboard is implemented in:
+
+```text
+app/streamlit_app.py
+```
+
+The dashboard reads only:
+
+```text
+data/processed/dashboard/*.parquet
+models/nlp/*.pkl
+```
+
+It does **not** read:
+
+```text
+data/raw/complaints.csv
+data/processed/complaints_processed.parquet
+```
+
+at runtime.
+
+This keeps dashboard startup and interaction speed independent of the full dataset size.
 
 ---
 
-## Cross-Cutting Layers
-
-Three utilities are used by every module in the pipeline, rather than
-belonging to any single stage:
-
-### Configuration Layer
-
-```
-config.yaml
-     │
-     ▼
-config_loader.py  (loads once, validates non-empty, fails fast if missing)
-     │
-     ▼
-Every module in src/  (except nlp_model_training.py — see ADR-006)
-```
-
-Risk thresholds, growth-rate thresholds, forecast settings, NLP sample
-sizes, and dashboard summary parameters all live in `config.yaml`
-rather than as hardcoded constants. This means a threshold like the
-minimum complaint count for risk scoring can be changed by editing one
-YAML value, with no code change required. Full reasoning: `adr.md`
-(ADR-006).
-
-### Testing Layer
-
-```
-tests/
-  └── pytest discovers and runs all test_*.py files
-```
-
-The test suite covers core utility functions — configuration loading,
-custom exception formatting, the safe year-over-year growth calculation
-(including the zero-previous-year edge case), risk-score min-max
-scaling, and MAPE calculation. 14/14 tests currently pass. These are
-unit tests against individual functions, not integration tests against
-a full pipeline run — see `evaluation.md` → Unit Tests for what this
-does and doesn't cover.
-
-### Logging Layer
-
-`src/logger.py` provides a single shared logger
-(`customer_complaint_intelligence`) used across every module. It writes
-to two destinations at once:
-- **Console** (`StreamHandler`) — for live feedback while a script runs
-- **Rotating file** (`RotatingFileHandler`, `logs/app.log`) — capped at
-  10 MB per file with 5 backups kept, so log files don't grow without
-  bound on a long-running or frequently-rerun pipeline
-
-Every pipeline stage logs its start, key intermediate counts (e.g. rows
-processed, companies kept after filtering), and completion, so a failed
-run can be traced back to exactly which stage and which step failed.
-
-### Exception Handling Layer
-
-`src/exception.py` defines `CustomException`, which every module's
-top-level function uses to wrap and re-raise errors. Rather than letting
-a raw `pandas` or `sklearn` exception propagate with a generic Python
-traceback, `CustomException` captures the originating file name and line
-number at the point of failure and attaches the original error message,
-so a failure in a long pipeline chain (`pipeline.py` running six
-modules in sequence) is immediately traceable to its source. See
-`adr.md` (ADR-008) for the reasoning behind this pattern.
-
-### Memory Optimization Strategy
-
-The pipeline relies on a small set of repeated techniques to stay
-within consumer-hardware memory limits, rather than one single trick:
-
-- **Chunked CSV ingestion** (`preprocessing.py`) — the raw 8-9 GB CSV
-  is read in configurable-size chunks, never loaded whole into memory.
-- **Column pruning** — every downstream module
-  (`risk_analysis.py`, `growth_analysis.py`, `driver_analysis.py`)
-  reads only the specific columns it needs from the processed Parquet
-  file via `pd.read_parquet(..., columns=[...])`, rather than loading
-  every column.
-- **PyArrow dataset scanning** (`create_narrative_training_data.py`) —
-  uses a batch-wise Arrow scanner with a filter pushed down to the
-  storage layer, instead of loading the full processed dataset into a
-  single Pandas DataFrame before filtering.
-- **Bounded sampling for NLP** — NLP training samples a configurable,
-  capped subset of narratives (default up to 300,000) rather than
-  vectorizing all ~3.8M available narratives at once.
-- **Dashboard pre-aggregation** — the most impactful technique
-  architecturally: by computing summaries once in the pipeline layer,
-  the presentation layer never needs to hold the full dataset in memory
-  at all. See ADR-004.
-
----
-
-## Deployment Layer
+## 9. Deployment Layer
 
 The Docker image bundles:
-- The Streamlit app (`app/`)
-- The pipeline source (`src/`)
-- `config.yaml`
-- Already-computed dashboard Parquet files (`data/processed/`)
-- Already-trained NLP models (`models/nlp/`)
 
-It deliberately excludes the raw dataset (`data/raw/`) — the image is
-meant for running the dashboard against pre-computed artifacts, not for
-re-running the full pipeline from scratch inside the container. Full
-details: [`docker.md`](docker.md).
+```text
+app/
+src/
+config.yaml
+.streamlit/
+data/processed/dashboard/
+models/nlp/
+```
 
-**Why the image is larger than a typical Streamlit app image:** it
-intentionally includes the processed dashboard artifacts and trained
-NLP model files, so a single `docker run` produces a fully working
-dashboard without requiring the user to first run the preprocessing
-pipeline or train any models themselves. This trades image size for
-one-command deployability.
+It excludes:
 
-**Data handling note:** the raw CFPB CSV is excluded from both the
-Docker image and the Git repository (see `.dockerignore` and
-`.gitignore`). The container only ever serves already-processed
-aggregates and already-trained models — it does not read or store raw
-complaint-level data with personally identifiable fields at runtime.
-The CFPB dataset itself redacts most direct identifiers in the source
-narrative text (e.g. names and account numbers appear as `XXXX`), but
-this project does not perform its own additional PII-scrubbing pass
-beyond what CFPB already does.
+```text
+data/raw/
+data/processed/complaints_processed.parquet
+data/processed/narratives_training.parquet
+logs/
+.env
+```
+
+The image is intentionally larger than a minimal Streamlit app image because it includes pre-computed dashboard artifacts and trained NLP models.
+
+This enables:
+
+```text
+docker run -p 8501:8501 shivamrajput130/customer-complaint-intelligence:latest
+```
+
+to launch a working dashboard immediately.
+
+---
+
+## 10. CI/CD Layer
+
+GitHub Actions validates the project automatically.
+
+```text
+Developer Push
+      │
+      ▼
+GitHub Actions
+      │
+      ├── Run Unit Tests
+      │
+      └── Validate Docker Build
+      │
+      ▼
+Fail fast if tests or Docker build break
+```
+
+The workflow checks:
+
+* Python dependency installation
+* Pytest execution
+* Docker image build
+
+This reduces the chance of pushing broken code or a broken Docker build to the main branch.
+
+---
+
+## 11. Configuration Layer
+
+Configuration is centralized in:
+
+```text
+config.yaml
+```
+
+Loaded by:
+
+```text
+src/config_loader.py
+```
+
+Configurable items include:
+
+* File paths
+* Preprocessing chunk size
+* Risk-score weights
+* Risk thresholds
+* Growth thresholds
+* Forecast horizon
+* NLP sample sizes
+* NLP tuning parameters
+
+Most modules read from `config.yaml`.
+
+Known exception:
+
+```text
+src/nlp_model_training.py
+```
+
+still contains some hardcoded constants and is listed as known technical debt.
+
+---
+
+## 12. Logging Layer
+
+Logging is centralized in:
+
+```text
+src/logger.py
+```
+
+The shared logger writes to:
+
+* Console
+* Rotating log file
+
+Log file behavior:
+
+```text
+logs/app.log
+Max size: 10 MB
+Backups: 5
+Maximum retained logs: ~50 MB
+```
+
+The logger records:
+
+* Stage start
+* Stage completion
+* Important intermediate counts
+* Errors and exceptions
+
+This makes pipeline failures easier to trace.
+
+---
+
+## 13. Exception Handling Layer
+
+Custom exceptions are defined in:
+
+```text
+src/exception.py
+```
+
+Each pipeline module wraps failures with contextual error information.
+
+The goal is to make errors easier to debug by surfacing:
+
+* Original exception message
+* File name
+* Line number
+* Pipeline stage context
+
+This is especially useful when `pipeline.py` runs multiple modules sequentially.
+
+---
+
+## 14. Testing Layer
+
+Tests live under:
+
+```text
+tests/
+```
+
+The current test suite covers:
+
+* Config loading
+* Custom exception behavior
+* Growth-rate calculation
+* Risk-score scaling
+* Forecast metric calculation
+* Recommendation helper logic
+* Required-column validation
+
+Current status:
+
+```text
+14/14 tests passing
+```
+
+Testing limitation:
+
+The current suite contains unit tests, but not a full end-to-end integration test against a small fixture dataset.
+
+---
+
+## 15. Memory Optimization Strategy
+
+The project uses multiple memory-control techniques.
+
+### Chunked CSV Ingestion
+
+The raw 8-9 GB CSV is read in chunks instead of loading the full file into memory.
+
+### Parquet Storage
+
+The processed dataset is stored as Parquet.
+
+```text
+Raw CSV: 8-9 GB
+Processed Parquet: ~1.3 GB
+Approximate reduction: ~85%
+```
+
+### Column Pruning
+
+Downstream modules read only the columns they need:
+
+```python
+pd.read_parquet(path, columns=[...])
+```
+
+### PyArrow Dataset Scanning
+
+`create_narrative_training_data.py` uses PyArrow scanning to extract narrative rows without loading the full processed dataset into memory.
+
+### Bounded NLP Sampling
+
+NLP training uses a capped sample size instead of vectorizing all ~3.8M narratives.
+
+### Pre-Aggregation
+
+The dashboard reads small summary Parquet files instead of aggregating millions of rows during user interaction.
+
+---
+
+## 16. Data Handling and Privacy
+
+The raw CFPB CSV is excluded from:
+
+* Git repository
+* Docker image
+
+The Docker container serves only:
+
+* Pre-computed dashboard summaries
+* Trained NLP model artifacts
+
+The CFPB dataset itself redacts many direct identifiers in complaint narratives, commonly replacing sensitive values with `XXXX`.
+
+This project does not perform an additional custom PII-redaction pass beyond the source dataset.
+
+---
+
+## 17. Scaling Limits
+
+The current architecture is designed for single-machine execution.
+
+It works for the current project scale:
+
+```text
+15.95M rows
+8-9 GB raw CSV
+~1.3 GB processed Parquet
+```
+
+Likely scaling bottlenecks at larger scale:
+
+* Sequential module execution
+* Single-machine CPU processing
+* Single-machine memory limits
+* Local filesystem storage
+* Manual pipeline orchestration
+
+---
+
+## 18. Future Scalability Options
+
+Possible future upgrades:
+
+| Area             | Upgrade                               |
+| ---------------- | ------------------------------------- |
+| Data processing  | Spark or DuckDB                       |
+| Orchestration    | Airflow, Prefect, Dagster             |
+| Storage          | PostgreSQL, DuckDB, object storage    |
+| NLP serving      | FastAPI                               |
+| Model governance | MLflow model registry                 |
+| Monitoring       | Evidently, Prometheus, Grafana        |
+| Deployment       | Kubernetes or cloud container service |
+| Data quality     | Great Expectations / Pandera          |
+
+These are not required for the current portfolio version but represent logical next steps for a larger enterprise deployment.
+
+---
+
+## 19. Design Summary
+
+The architecture prioritizes:
+
+* Memory-safe processing
+* Pre-computed dashboard artifacts
+* CPU-only NLP
+* Transparent models
+* Config-driven behavior
+* Clear pipeline boundaries
+* Docker-based reproducibility
+* Honest documentation of limitations
+
+The result is a production-style analytics platform rather than a notebook-only analysis project.
