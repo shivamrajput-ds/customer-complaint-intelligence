@@ -18,6 +18,8 @@ This is a portfolio project built with production-style engineering practices: m
 * **GitHub Repository:** [github.com/shivamrajput-ds/customer-complaint-intelligence](https://github.com/shivamrajput-ds/customer-complaint-intelligence)
 * **Watch Full Project Demo:** [youtu.be/ZrXg5p7wbqM](https://youtu.be/ZrXg5p7wbqM)
 * **Docker Hub:** [hub.docker.com/repository/docker/shivamrajput130/customer-complaint-intelligence](https://hub.docker.com/repository/docker/shivamrajput130/customer-complaint-intelligence)
+* **Project Summary:** [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)
+* **Interview Q&A:** [docs/INTERVIEW_QA.md](docs/INTERVIEW_QA.md)
 
 ---
 
@@ -256,6 +258,7 @@ customer-complaint-intelligence/
 ├── app/                  Streamlit dashboard
 ├── src/                  Core pipeline modules
 ├── docs/                 Technical documentation
+│   └── INTERVIEW_QA.md   Interview preparation notes
 ├── data/processed/       Dashboard-ready Parquet outputs
 ├── models/nlp/           Trained NLP artifacts
 ├── tests/                Unit tests
@@ -263,6 +266,7 @@ customer-complaint-intelligence/
 ├── .github/workflows/    GitHub Actions workflows
 ├── .streamlit/           Streamlit theme configuration
 ├── config.yaml           Central configuration
+├── PROJECT_SUMMARY.md    Short recruiter/interviewer overview
 ├── Dockerfile
 ├── requirements.txt
 ├── pyproject.toml
@@ -393,6 +397,8 @@ Full guide: [`docs/docker.md`](docs/docker.md)
 
 | File                                                 | Purpose                                 |
 | ---------------------------------------------------- | --------------------------------------- |
+| [`PROJECT_SUMMARY.md`](PROJECT_SUMMARY.md)           | Short recruiter/interviewer overview    |
+| [`docs/INTERVIEW_QA.md`](docs/INTERVIEW_QA.md)       | Interview preparation questions and answers |
 | [`docs/architecture.md`](docs/architecture.md)       | System architecture and module flow     |
 | [`docs/evaluation.md`](docs/evaluation.md)           | Model metrics and validation details    |
 | [`docs/case_study.md`](docs/case_study.md)           | Engineering case study and tradeoffs    |
